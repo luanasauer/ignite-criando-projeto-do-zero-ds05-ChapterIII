@@ -11,6 +11,7 @@ import styles from './home.module.scss';
 import { format } from 'date-fns';
 import ptBR from 'date-fns/locale/pt-BR';
 import { useState } from 'react';
+import { useRouter } from 'next/router';
 
 
 
@@ -31,9 +32,11 @@ interface PostPagination {
 
 interface HomeProps {
   postsPagination: PostPagination;
+  preview: boolean
 }
 
-export default function Home({ postsPagination }: HomeProps): JSX.Element {
+export default function Home({ postsPagination, preview }: HomeProps): JSX.Element {
+
   const posts1 = postsPagination.results.map(post => {
     return {
       ...post,
@@ -44,6 +47,8 @@ export default function Home({ postsPagination }: HomeProps): JSX.Element {
       })
     }
   })
+
+
   const [posts, setPosts] = useState<Post[]>(posts1);
   const [nextPage, setNextPage] = useState(postsPagination.next_page);
   const [currentPage, setCurrentPage] = useState(1);
@@ -110,14 +115,26 @@ export default function Home({ postsPagination }: HomeProps): JSX.Element {
             Carregar mais posts
 
           </button>)}
+
+
         </div>
       </main>
+      {preview && (
+        <aside>
+          <Link href="/api/exit-preview">
+            <a className={commonStyles.preview}>Sair do modo Preview</a>
+          </Link>
+        </aside>
+      )}
     </>
   )
 }
 
-export const getStaticProps: GetStaticProps = async () => {
+export const getStaticProps: GetStaticProps<HomeProps> = async ({
+  preview = false,
+}) => {
   const prismic = getPrismicClient();
+
   const postsResponse = await prismic.query([
     Prismic.predicates.at('document.type', 'posts')
   ], {
@@ -148,8 +165,9 @@ export const getStaticProps: GetStaticProps = async () => {
 
   return {
     props: {
-      postsPagination
+      postsPagination,
+      preview
     },
-
+    revalidate: 1800,
   }
 };

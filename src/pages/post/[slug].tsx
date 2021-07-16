@@ -8,10 +8,14 @@ import { FiUser, FiCalendar, FiClock } from "react-icons/fi";
 import { format } from 'date-fns';
 import ptBR from 'date-fns/locale/pt-BR';
 import { GetStaticPaths, GetStaticProps } from 'next';
+import Comments from '../../components/Comments';
+import React from 'react';
+import Link from 'next/link';
 
 
 interface Post {
   first_publication_date: string | null;
+  last_publication_date: string | null;
   data: {
     title: string;
     banner: {
@@ -29,15 +33,44 @@ interface Post {
 
 interface PostProps {
   post: Post;
+  preview: boolean;
+  navigation: {
+    prevPost: {
+      uid: string,
+      data: {
+        title: string
+      }
+    }[]
+    nextPost: {
+      uid: string,
+      data: {
+        title: string
+      }
+    }[]
+  }
 }
 
-export default function Post({ post }: PostProps) {
+export default function Post({ post, preview, navigation }: PostProps) {
 
   const dateFirstFormated = format(
     new Date(post.first_publication_date),
     "dd MMM yyyy", {
     locale: ptBR,
   })
+
+
+
+  const isPostEdited = post.last_publication_date != post.first_publication_date;
+
+  let dateLastFormated;
+
+  if (isPostEdited) {
+    dateLastFormated = format(
+      new Date(post.last_publication_date),
+      "'* editado em' dd MMM yyyy', as' H':'m", {
+      locale: ptBR,
+    });
+  }
 
   const router = useRouter()
   if (router.isFallback) {
@@ -81,6 +114,7 @@ export default function Post({ post }: PostProps) {
               {`${estimatedReadingTime} min`}
             </span>
           </span>
+          {isPostEdited && <div className={styles.postEdited}>{dateLastFormated}</div>}
 
           {post.data.content.map(content => {
             return (
@@ -94,7 +128,39 @@ export default function Post({ post }: PostProps) {
               </article>
             )
           })}
+
+          <section className={`${styles.navigation} ${commonStyles.container}`} >
+
+            {navigation?.prevPost.length > 0 && (
+              <div>
+                <h3>{navigation.prevPost[0].data.title}</h3>
+                <Link href={`/post/${navigation.prevPost[0].uid}`}>
+                  <a> Post anterior</a>
+                </Link>
+              </div>
+            )}
+            {navigation?.nextPost.length > 0 && (
+              <div>
+                <h3>{navigation.nextPost[0].data.title}</h3>
+                <Link href={`/post/${navigation.nextPost[0].uid}`}>
+                  <a> Próximo post</a>
+                </Link>
+              </div>)}
+
+          </section>
+
+          {preview && (
+            <aside>
+              <Link href="/api/exit-preview">
+                <a className={commonStyles.preview}>Sair do modo Preview</a>
+              </Link>
+            </aside>
+          )}
+
+          <Comments >
+          </Comments>
         </article>
+
       </main>
 
     </>
@@ -121,10 +187,36 @@ export const getStaticPaths: GetStaticPaths = async () => {
   };
 };
 
-export const getStaticProps: GetStaticProps = async (context) => {
-  const { slug } = context.params;
+export const getStaticProps: GetStaticProps = async ({
+  params,
+  preview = false,
+  previewData,
+}) => {
+  const { slug } = params;
   const prismic = getPrismicClient();
-  const response = await prismic.getByUID('posts', String(slug), {});
+  const response = await prismic.getByUID('posts', String(slug), {
+    ref: previewData?.ref ?? null,
+  });
+
+  const prevPost = await prismic.query(
+    [Prismic.Predicates.at('document.type', 'posts')],
+    {
+      pageSize: 1,
+      after: response.id,
+      orderings: '[document.first_publication_date]'
+    }
+  )
+
+  const nextPost = await prismic.query(
+    [Prismic.Predicates.at('document.type', 'posts')],
+    {
+      pageSize: 1,
+      after: response.id,
+      orderings: '[document.last_publication_date desc]'
+    }
+  )
+
+
   const post = {
     uid: response.uid,
     data: {
@@ -141,12 +233,18 @@ export const getStaticProps: GetStaticProps = async (context) => {
         }
       })
     },
-    first_publication_date: response.first_publication_date
+    first_publication_date: response.first_publication_date,
+    last_publication_date: response.last_publication_date
   };
 
   return {
     props: {
       post,
+      preview,
+      navigation: {
+        prevPost: prevPost?.results,
+        nextPost: nextPost?.results
+      }
     },
     redirect: 60 * 60,
   }
